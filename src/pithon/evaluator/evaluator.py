@@ -3,9 +3,9 @@ from pithon.evaluator.primitive import check_type, get_primitive_dict
 from pithon.syntax import (
     PiAssignment, PiBinaryOperation, PiNumber, PiBool, PiStatement, PiProgram, PiSubscript, PiVariable,
     PiIfThenElse, PiNot, PiAnd, PiOr, PiWhile, PiNone, PiList, PiTuple, PiString,
-    PiFunctionDef, PiFunctionCall, PiFor, PiBreak, PiContinue, PiIn, PiReturn
+    PiFunctionDef, PiFunctionCall, PiFor, PiBreak, PiContinue, PiIn, PiReturn, PiClassDef, PiAttributeAssignment, PiAttribute
 )
-from pithon.evaluator.envvalue import EnvValue, VFunctionClosure, VList, VNone, VTuple, VNumber, VBool, VString
+from pithon.evaluator.envvalue import EnvValue, VClassDef, VFunctionClosure, VList, VMethodClosure, VNone, VObject, VTuple, VNumber, VBool, VString
 
 
 def initial_env() -> EnvFrame:
@@ -134,8 +134,47 @@ def evaluate_stmt(node: PiStatement, env: EnvFrame) -> EnvValue:
     elif isinstance(node, PiSubscript):
         return _evaluate_subscript(node, env)
 
+    elif isinstance(node, PiClassDef):
+        return _evaluate_class_def(node, env)
+
+    elif isinstance(node, PiAttributeAssignment):
+        return _evaluate_attribute_assignment(node, env)
+
+    elif isinstance(node, PiAttribute):
+        return _evaluate_attribute(node, env)
+
     else:
         raise TypeError(f"Type de nœud non supporté : {type(node)}")
+
+def _methods_to_dict(methods: list[PiFunctionDef], env: EnvFrame) -> dict[str, VFunctionClosure]:
+    """Convertit une liste de définitions de méthodes en un dictionnaire."""
+    return {method.name: VFunctionClosure(method, env) for method in methods}
+
+def _evaluate_class_def(node: PiClassDef, env: EnvFrame) -> EnvValue:
+    """Évalue une définition de classe."""
+    class_def = VClassDef(name=node.name, methods=_methods_to_dict(node.methods, env))
+    insert(env, node.name, class_def)
+    return VNone(value=None)
+
+def _evaluate_attribute_assignment(node: PiAttributeAssignment, env: EnvFrame) -> EnvValue:
+    """Évalue une affectation d'attribut."""
+    o = evaluate_stmt(node.object, env)
+    value = evaluate_stmt(node.value, env)
+    if not isinstance(o, VObject):
+        raise TypeError("L'objet affecté doit être une instance.")
+    o.attributes[node.attr] = value
+    return o 
+
+def _evaluate_attribute(node: PiAttribute, env: EnvFrame) -> EnvValue:
+    """Évalue un accès à un attribut."""
+    o = evaluate_stmt(node.object, env)
+    if node.attr in o.attributes:
+        if isinstance(o.attributes[node.attr], VFunctionClosure):
+            return VMethodClosure(o.attributes[node.attr], o)   
+        else:
+            return o.attributes[node.attr]
+    else:
+        raise AttributeError(f"L'attribut {node.attr} n'existe pas.")
 
 def _check_valid_piandor_type(obj):
     """Vérifie que le type est valide pour 'and'/'or'."""
@@ -214,14 +253,26 @@ def _evaluate_function_call(node: PiFunctionCall, env: EnvFrame) -> EnvValue:
     if callable(func_val):
         return func_val(args)
     # Fonction utilisateur
-    if not isinstance(func_val, VFunctionClosure):
+    elif isinstance(func_val, VClassDef):
+        my_init = func_val.methods["__init__"]
+        o = VObject(class_def=func_val, attributes={})
+        new_args = [o] + args
+        return _call_vfunction_closure(my_init, new_args, env)
+    elif isinstance(func_val, VFunctionClosure):
+        return _call_vfunction_closure(func_val, args, env)
+    else:
         raise TypeError("Tentative d'appel d'un objet non-fonction.")
+
+def _call_vfunction_closure(func_val: VFunctionClosure, args: list[EnvValue], env: EnvFrame) -> EnvValue:
+    """Appelle une fonction encapsulée dans un VFunctionClosure."""
     funcdef = func_val.funcdef
     closure_env = func_val.closure_env
     call_env = EnvFrame(parent=closure_env)
     for i, arg_name in enumerate(funcdef.arg_names):
         if i < len(args):
             call_env.insert(arg_name, args[i])
+        elif arg_name == "self":
+            call_env.insert(arg_name, func_val)
         else:
             raise TypeError("Argument manquant pour la fonction.")
     if funcdef.vararg:
@@ -236,7 +287,6 @@ def _evaluate_function_call(node: PiFunctionCall, env: EnvFrame) -> EnvValue:
     except ReturnException as ret:
         return ret.value
     return result
-
 class ReturnException(Exception):
     """Exception pour retourner une valeur depuis une fonction."""
     def __init__(self, value):
