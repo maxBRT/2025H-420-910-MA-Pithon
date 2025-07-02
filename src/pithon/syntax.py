@@ -114,6 +114,8 @@ class PiAttribute:
     object: 'PiExpression'
     attr: str
 
+# PiObject not in syntax.py
+
 @dataclass
 class PiAttributeAssignment:
     object: 'PiExpression'
