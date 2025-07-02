@@ -169,10 +169,9 @@ def _evaluate_attribute(node: PiAttribute, env: EnvFrame) -> EnvValue:
     """Évalue un accès à un attribut."""
     o = evaluate_stmt(node.object, env)
     if node.attr in o.attributes:
-        if isinstance(o.attributes[node.attr], VFunctionClosure):
-            return VMethodClosure(o.attributes[node.attr], o)   
-        else:
-            return o.attributes[node.attr]
+        return o.attributes[node.attr]
+    elif node.attr in o.class_def.methods:
+        return VMethodClosure(o.class_def.methods[node.attr], o)
     else:
         raise AttributeError(f"L'attribut {node.attr} n'existe pas.")
 
@@ -260,6 +259,9 @@ def _evaluate_function_call(node: PiFunctionCall, env: EnvFrame) -> EnvValue:
         return _call_vfunction_closure(my_init, new_args, env)
     elif isinstance(func_val, VFunctionClosure):
         return _call_vfunction_closure(func_val, args, env)
+    elif isinstance(func_val, VMethodClosure):
+        new_args = [func_val.instance] + args
+        return _call_vfunction_closure(func_val.function, new_args, env)
     else:
         raise TypeError("Tentative d'appel d'un objet non-fonction.")
 
