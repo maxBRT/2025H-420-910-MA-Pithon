@@ -33,8 +33,15 @@ def run_cli(ast_only=False):
 def run_file(filename, ast_only=False):
     parser = SimpleParser()
     env = initial_env()
-    with open(filename, "r", encoding="utf-8") as f:
-        source = f.read()
+    try:
+        with open(filename, "r", encoding="utf-8") as f:
+            source = f.read()
+    except FileNotFoundError:
+        print(f"Fichier {filename} non trouvé.")
+        return
+    except Exception as e:
+        print(f"Erreur lors de la lecture du fichier {filename}: {e}")
+        return
     tree = parser.parse(source)
     if ast_only:
         print(tree)
