@@ -43,7 +43,7 @@ Ce projet académique vise à :
 ### Installation
 ```bash
 # Cloner le repository
-git clone 
+git clone https://github.com/maxBRT/pithon.git
 cd pithon
 
 # Installer avec uv (recommandé)
